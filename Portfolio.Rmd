@@ -1,0 +1,158 @@
+---
+title: "MIS 510 Portfolio Project Option 1"
+author: "Ling Long Zhang"
+date: "3/2/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+#set up working directory
+setwd("C:/Users/zhang/OneDrive/Desktop/MIS510/data")
+
+#save the GermanCredit dataset as credit dataframe
+credit<-read.csv("GermanCredit.csv", header=TRUE)
+```
+
+
+#Data Exploration
+#1. 
+```{r}
+#obtain a summary statistics of the dataframe
+summary(credit)
+```
+
+#2.
+```{r}
+#create a dataframe with only the numerical attributes
+num.credit<-data.frame(credit$DURATION,credit$AMOUNT, credit$INSTALL_RATE, credit$AGE, credit$NUM_CREDITS, credit$NUM_DEPENDENTS)
+
+#obtain sd for all the numerical attributes
+data.frame(sd=sapply(num.credit,sd, na.rm=TRUE))
+```
+
+#3.
+```{r}
+#determine the number of missing values for each attributes
+data.frame(miss.val=sapply(credit, function(x) sum(which(is.na(x)))))
+```
+
+#4. 
+```{r}
+#box plot for the distribution of credit responses
+#convert the credit response observations to a table
+tab<-table(credit$RESPONSE)
+
+#plot a bar plot for the table
+barplot(tab, xlab="Response", ylab="Count", main="Bar Plot for Credit Response")
+```
+
+#5.
+```{r}
+#create a histogram for the distributino of the credit amount
+hist(credit$AMOUNT, xlab="Credit Amount", main="Histogram of Credit Amount", ylim=c(0,500))
+```
+
+#Data Partition
+```{r}
+#remove the obs column from the dataframe
+credit<-credit[,2:32]
+
+#treat Response as a categorical attribute by converting to a factor
+credit$RESPONSE<-as.factor(credit$RESPONSE)
+
+#use set.seed to get the same partition whenever rerunning R codes
+set.seed(1)
+
+#partition into 60% training set and 40% validation set
+train.rows<-sample(rownames(credit), dim(credit)[1]*0.6)
+train.data<-credit[train.rows,]
+
+valid.rows<-setdiff(rownames(credit), train.rows)
+valid.data<-credit[valid.rows,]
+```
+
+#Logistic Regression Model
+```{r}
+#create the logistic regression model
+logit.reg<-glm(RESPONSE~., family="binomial",data=train.data)
+
+#obtain the results of the model
+options(scipen=999)
+summary(logit.reg)
+```
+
+#Confusion Matrix
+```{r}
+library(caret)
+
+#the predictions based on the training set
+train.pred<-predict(logit.reg, train.data, type="response")
+
+#convert the predictions to factors
+train.pred1<-ifelse(train.pred>0.5,1,0)
+train.pred1<-factor(train.pred1, levels=c(0,1))
+
+#generate confusion matrix and statistics
+confusionMatrix(train.pred1, train.data$RESPONSE)
+
+#repeat process for validation
+valid.pred<-predict(logit.reg, valid.data, type="response")
+valid.pred1<-ifelse(valid.pred>0.5, 1, 0)
+valid.pred1<-factor(valid.pred1, levels=c(0,1))
+confusionMatrix(valid.pred1, valid.data$RESPONSE)
+```
+
+#Classification Trees
+```{r}
+library(rpart)
+library(rpart.plot)
+
+#create classification tree
+default.ct<-rpart(RESPONSE~., data=train.data, method="class")
+
+#plot tree
+prp(default.ct, type=1, extra=1, under=TRUE, split.font=1, varlen=-10, cex=0.7)
+```
+
+#Confusion Matrix
+```{r}
+
+#generate predicted class for training set
+default.ct.point.pred.train<-predict(default.ct, train.data, type="class")
+
+#confusion matrix for training set
+confusionMatrix(default.ct.point.pred.train, train.data$RESPONSE)
+
+#apply same R codes for validation set
+default.ct.point.pred.valid<-predict(default.ct, valid.data, type="class")
+confusionMatrix(default.ct.point.pred.valid, valid.data$RESPONSE)
+```
+
+#Comparison of the Models (ROC)
+##Logistic Regression
+```{r}
+library(pROC)
+
+#generating roc curve for validation set of logistic regression model
+log.roc<-roc(valid.data$RESPONSE, valid.pred)
+
+#plot the roc curve
+#need to change figure margins because Rpanel is too small for the plot
+par(mar=c(1,1,1,1))
+plot.roc(log.roc)
+
+#compute the AUC
+auc(log.roc)
+```
+
+##Classification Trees
+```{r}
+#generating and plotting roc curve for validation set of classification tree model
+ct.roc<-roc(valid.data$RESPONSE, as.numeric(default.ct.point.pred.valid))
+plot.roc(ct.roc)
+
+auc(ct.roc)
+```
